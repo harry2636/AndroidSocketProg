@@ -139,21 +139,30 @@ public class MainActivity extends AppCompatActivity {
 
         @Override
         public void onClick(View arg0) {
-          int shift = Integer.parseInt(shiftText.getText().toString());
-          if (targetBytes == null) {
+
+          if (addressText.getText().toString().length() == 0) {
+            Toast.makeText(MainActivity.this, "Address should be written before connecition.",
+                Toast.LENGTH_LONG).show();
+          } else if (portText.getText().toString().length() == 0) {
+            Toast.makeText(MainActivity.this, "Port should be written before connecition.",
+                Toast.LENGTH_LONG).show();
+          } else if (shiftText.getText().toString().length() == 0) {
+            Toast.makeText(MainActivity.this, "Shift value should be written before connecition.",
+                Toast.LENGTH_LONG).show();
+          } else if (targetBytes == null) {
             Toast.makeText(MainActivity.this, "File should be chosen before connection.",
                 Toast.LENGTH_LONG).show();
-          } else if (shift < 0) {
+          } else if (Integer.parseInt(shiftText.getText().toString()) < 0) {
             Toast.makeText(MainActivity.this, "Shift value should be non-negative value.",
                 Toast.LENGTH_LONG).show();
           } else if (outputText.getText().toString().length() == 0) {
-            Toast.makeText(MainActivity.this, "Output FileName should be written before connecition",
+            Toast.makeText(MainActivity.this, "Output FileName should be written before connecition.",
                 Toast.LENGTH_LONG).show();
           } else {
             MyClientTask myClientTask = new MyClientTask(
                 addressText.getText().toString(),
                 Integer.parseInt(portText.getText().toString()), MainActivity.this, isEncrypt,
-                shift);
+                Integer.parseInt(shiftText.getText().toString()));
             myClientTask.execute(targetBytes.length);
           }
         }};
@@ -208,6 +217,7 @@ public class MainActivity extends AppCompatActivity {
       publishProgress("max", Integer.toString(maxByteCnt));
 
       //connection part
+      int invaildCnt = 0;
       while (offset != maxByteCnt) {
         offset = sendMessage(dstAddress, dstPort, offset, op, shift);
         //Log.e("offset", offset+"");
@@ -222,6 +232,13 @@ public class MainActivity extends AppCompatActivity {
         if (offset < -100) {
           maxByteCnt = -1;
           break;
+        }
+        if (offset == 0) {
+          invaildCnt++;
+          if (invaildCnt > 100) {
+            maxByteCnt = -2;
+            break;
+          }
         }
       }
       Log.e("connection_cnt: ", connectionCnt+"");
@@ -286,7 +303,7 @@ public class MainActivity extends AppCompatActivity {
         socket.setSoTimeout(5000);
         isDisrupted = false;
       }
-      //Log.e("isDisrupted: ", isDisrupted +"");
+      Log.e("isDisrupted: ", isDisrupted +"");
       //make message from offset 0
       makeMessage(offset, op, shift);
       //Log.e("messageBytes: ", messageBytes +"");
@@ -296,7 +313,7 @@ public class MainActivity extends AppCompatActivity {
       outputStream.write(messageBytes);
       outputStream.flush();
       inputStream = socket.getInputStream();
-      //Log.e("message", message.array().toString());
+      Log.e("message", message.array().toString());
 
       //prepare buffer for reading.
       byteArrayOutputStream =
@@ -323,7 +340,7 @@ public class MainActivity extends AppCompatActivity {
           lenBytes[i] = buffer[i+4];
         }
         targetLen = ByteBuffer.wrap(lenBytes).getInt();
-        //Log.e("received len", targetLen +"");
+        Log.e("received len", targetLen +"");
         accReadLen += 8;
         break;
       }
@@ -384,12 +401,17 @@ public class MainActivity extends AppCompatActivity {
     } finally{
       if(socket != null){
         try {
-          byteArrayOutputStream.close();
+          if (byteArrayOutputStream != null) {
+            byteArrayOutputStream.close();
+          }
         } catch (IOException e) {
           // TODO Auto-generated catch block
           e.printStackTrace();
         }
       }
+    }
+    if (accReadLen < 8) {
+      return offset;
     }
     return offset + accReadLen - 8;
   }
@@ -410,8 +432,8 @@ public class MainActivity extends AppCompatActivity {
       FileOutputStream currFileStream = new FileOutputStream(file);
       currFileStream.write(contentString.getBytes());
       currFileStream.flush();
-      //Log.e("openFileLength: ", targetBytes.length + "");
-      //Log.e("createFileLength: ", contentString.length() + "");
+      Log.e("FileLength1_open: ", targetBytes.length + "");
+      Log.e("FileLength2_create: ", contentString.length() + "");
       currFileStream.close();
     } catch (FileNotFoundException e) {
       e.printStackTrace();
