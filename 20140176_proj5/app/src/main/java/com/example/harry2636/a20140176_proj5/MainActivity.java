@@ -90,8 +90,8 @@ public class MainActivity extends AppCompatActivity {
 
     addressText.setText("143.248.56.16");
     portText.setText("4003");
-    outputText.setText("long_encrypted.txt");
-    shiftText.setText("0");
+    outputText.setText("result.txt");
+    shiftText.setText("1");
   }
 
   /* Referenced message creating in http://stackoverflow.com/questions/33074658/application-layer-protocol-header-fields-in-java */
@@ -134,7 +134,6 @@ public class MainActivity extends AppCompatActivity {
         }
       };
 
-  /* Referenced client side socket programming in http://android-er.blogspot.kr/2014/02/android-sercerclient-example-client.html */
   View.OnClickListener connectButtonOnClickListener =
       new View.OnClickListener(){
 
@@ -159,7 +158,7 @@ public class MainActivity extends AppCompatActivity {
           }
         }};
 
-
+/* Referenced client side socket programming in http://android-er.blogspot.kr/2014/02/android-sercerclient-example-client.html */
   public class MyClientTask extends AsyncTask<Integer, String, Integer> {
 
     private String dstAddress;
@@ -220,6 +219,10 @@ public class MainActivity extends AppCompatActivity {
         }
         publishProgress("progress", Integer.toString(offset),
             opString + "current byte: " + Integer.toString(offset) + "B");
+        if (offset < -100) {
+          maxByteCnt = -1;
+          break;
+        }
       }
       Log.e("connection_cnt: ", connectionCnt+"");
 
@@ -240,9 +243,11 @@ public class MainActivity extends AppCompatActivity {
     protected void onPostExecute(Integer result) {
       connectionCnt = 0;
       createFile(response);
-      responseText.setText(response);
+      responseText.setText("Response from server is done");
       try {
-        socket.close();
+        if (socket != null) {
+          socket.close();
+        }
         socket = null;
         isDisrupted = false;
       } catch (IOException e) {
@@ -299,7 +304,6 @@ public class MainActivity extends AppCompatActivity {
       byte[] buffer = new byte[MAXIMUM_MESSAGE_SIZE];
       //Log.e("startWhile", "0");
 
-
       //read Header bytes.
       while (true) {
         Log.e("header read start", "0");
@@ -341,12 +345,15 @@ public class MainActivity extends AppCompatActivity {
         accReadLen += bytesRead;
         //Log.e("bytesRead: ", bytesRead + "");
         byteArrayOutputStream.write(buffer, 0, bytesRead);
+        byteArrayOutputStream.flush();
         //Log.e("byteArrayOutputStream: ", byteArrayOutputStream.toString());
         //Log.e("acc len: ", accReadLen+"");
+        /*
         String a = byteArrayOutputStream.toString("UTF-8");
         if (a.length() != bytesRead) {
-          Log.e("streamWriteSize", a.length()+"");
+          Log.e("streamWriteSize: ", a.length()+" bytes Read: " + bytesRead);
         }
+        */
         response += byteArrayOutputStream.toString("UTF-8");
         byteArrayOutputStream.reset();
         if (targetLen == accReadLen) {
@@ -402,8 +409,9 @@ public class MainActivity extends AppCompatActivity {
     try {
       FileOutputStream currFileStream = new FileOutputStream(file);
       currFileStream.write(contentString.getBytes());
-      Log.e("openFileLength: ", targetBytes.length + "");
-      Log.e("createFileLength: ", contentString.length() + "");
+      currFileStream.flush();
+      //Log.e("openFileLength: ", targetBytes.length + "");
+      //Log.e("createFileLength: ", contentString.length() + "");
       currFileStream.close();
     } catch (FileNotFoundException e) {
       e.printStackTrace();
@@ -432,6 +440,7 @@ public class MainActivity extends AppCompatActivity {
     }
   }
 
+  /*
   public void createSampleFile() {
     String dirname = Environment.getExternalStorageDirectory().getAbsolutePath();
     Log.e("dir", dirname);
@@ -447,6 +456,7 @@ public class MainActivity extends AppCompatActivity {
     try {
       FileOutputStream currFileStream = new FileOutputStream(file);
       currFileStream.write("1234567890\n".getBytes());
+      currFileStream.flush();
       currFileStream.close();
     } catch (FileNotFoundException e) {
       e.printStackTrace();
@@ -457,7 +467,6 @@ public class MainActivity extends AppCompatActivity {
     MediaScannerConnection.scanFile(getApplicationContext(), new String[]{Environment.getExternalStorageDirectory()
         .getAbsolutePath()+"/sample.txt"}, null, null);
 
-    /* Referenced file reading from http://stackoverflow.com/questions/12421814/how-can-i-read-a-text-file-in-android */
     try {
       BufferedReader br = new BufferedReader(new FileReader(file));
       String line;
@@ -475,8 +484,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
   }
+  */
 
-  /* refernecec http://stackoverflow.com/questions/10039672/android-how-to-read-file-in-bytes for file input reading */
+  /* referenced http://stackoverflow.com/questions/10039672/android-how-to-read-file-in-bytes for file input reading */
   @Override
   protected void onActivityResult(int requestCode, int resultCode, Intent data) {
     Log.e("onActivityResult", "0");
