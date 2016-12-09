@@ -29,17 +29,18 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 
 public class MainActivity extends AppCompatActivity {
   private static final int FILE_CHOOSE_CODE = 1;
-  private static final String resultFileName = "result.txt";
   private static final int MAXIMUM_MESSAGE_SIZE = 4096;
 
   EditText addressText;
   EditText portText;
   EditText shiftText;
+  EditText outputText;
   Button connectButton;
   Button fileChooseButton;
   TextView responseText;
@@ -50,26 +51,17 @@ public class MainActivity extends AppCompatActivity {
   byte[] targetBytes = null;
   String response = "";
   boolean isEncrypt = true;
+  Socket socket = null;
+  boolean isDisrupted = false;
+  int connectionCnt = 0;
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
     setContentView(R.layout.activity_main);
 
-    /*
-    Button fileChooser = (Button)findViewById(R.id.file_choose_button);
-    fileChooser.setOnClickListener(new View.OnClickListener() {
-      @Override
-      public void onClick(View view) {
-        Intent fileChooserIntent = new Intent(MainActivity.this, DocumentsSample.class);
-        startActivity(fileChooserIntent);
-      }
-    });
-    */
-
-    //createSampleFile();
-
     addressText = (EditText)findViewById(R.id.address); //click done
     portText = (EditText)findViewById(R.id.port); //click done
+    outputText = (EditText)findViewById(R.id.output); // click done
     connectButton = (Button)findViewById(R.id.connect_button); //click done
     fileChooseButton = (Button)findViewById(R.id.file_choose_button);
     responseText = (TextView)findViewById(R.id.response); //click done
@@ -98,19 +90,22 @@ public class MainActivity extends AppCompatActivity {
 
     addressText.setText("143.248.56.16");
     portText.setText("4003");
+    outputText.setText("long_encrypted.txt");
     shiftText.setText("0");
   }
 
   /* Referenced message creating in http://stackoverflow.com/questions/33074658/application-layer-protocol-header-fields-in-java */
   public void makeMessage(int offset, int op, int shift) {
-    int length = targetBytes.length - offset + 8;
-    if (length > MAXIMUM_MESSAGE_SIZE) {
-      length = MAXIMUM_MESSAGE_SIZE;
-    }
     if (op >= 2 ||  op < 0) {
       Log.e("exit system", op+"");
       System.exit(-1);
     }
+
+    int length = targetBytes.length - offset + 8;
+    if (length > MAXIMUM_MESSAGE_SIZE) {
+      length = MAXIMUM_MESSAGE_SIZE;
+    }
+
     //Log.e("op: ", op+"");
     message = ByteBuffer.allocate(length);
     //message = ByteBuffer.allocate(data.length() + 8);
@@ -151,6 +146,9 @@ public class MainActivity extends AppCompatActivity {
                 Toast.LENGTH_LONG).show();
           } else if (shift < 0) {
             Toast.makeText(MainActivity.this, "Shift value should be non-negative value.",
+                Toast.LENGTH_LONG).show();
+          } else if (outputText.getText().toString().length() == 0) {
+            Toast.makeText(MainActivity.this, "Output FileName should be written before connecition",
                 Toast.LENGTH_LONG).show();
           } else {
             MyClientTask myClientTask = new MyClientTask(
@@ -193,6 +191,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onPreExecute() {
       response = "";
+      connectionCnt = 0;
       progressDialog = new ProgressDialog(context);
       progressDialog.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
       progressDialog.setMessage("Start");
@@ -206,21 +205,13 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected Integer doInBackground(Integer... params) {
       int offset = 0;
-      int connection_cnt  = 0;
       int maxByteCnt = params[0];
       publishProgress("max", Integer.toString(maxByteCnt));
 
       //connection part
       while (offset != maxByteCnt) {
         offset = sendMessage(dstAddress, dstPort, offset, op, shift);
-        /*
-        if (offset == -2) {
-          maxByteCnt = -2;
-          break;
-        }
-        */
-        connection_cnt++;
-        Log.e("offset", offset+"");
+        //Log.e("offset", offset+"");
         String opString = "";
         if (isEncrypt) {
           opString = "Encrypting now, ";
@@ -230,8 +221,7 @@ public class MainActivity extends AppCompatActivity {
         publishProgress("progress", Integer.toString(offset),
             opString + "current byte: " + Integer.toString(offset) + "B");
       }
-      Log.e("connection_cnt: ", connection_cnt+"");
-      createFile(response);
+      Log.e("connection_cnt: ", connectionCnt+"");
 
       return maxByteCnt;
     }
@@ -248,12 +238,21 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onPostExecute(Integer result) {
+      connectionCnt = 0;
+      createFile(response);
       responseText.setText(response);
-      response = "";
+      try {
+        socket.close();
+        socket = null;
+        isDisrupted = false;
+      } catch (IOException e) {
+        e.printStackTrace();
+      }
+
 
       progressDialog.dismiss();
       if (result >= 0) {
-        Toast.makeText(context, "Received " + Integer.toString(result) + "B, saved to " + resultFileName,
+        Toast.makeText(context, "Received " + Integer.toString(result) + "B, saved to " + outputText.getText().toString(),
             Toast.LENGTH_LONG).show();
       } else {
         Toast.makeText(context, "Invalid address and port number to connect.",
@@ -265,7 +264,6 @@ public class MainActivity extends AppCompatActivity {
   }
 
   public int sendMessage(String dstAddress, int dstPort, int offset, int op, int shift){
-    Socket socket = null;
     OutputStream outputStream = null;
     InputStream inputStream = null;
     ByteArrayOutputStream byteArrayOutputStream = null;
@@ -274,18 +272,19 @@ public class MainActivity extends AppCompatActivity {
     int targetLen = 0;
 
     // create and connect to socket
+
     try {
-      socket = new Socket(dstAddress, dstPort);
-    } catch (IOException e) { //Invalid ip or port.
-      e.printStackTrace();
-      Log.e("Exception", "socket");
-      return offset;
-      //return -2;
-    }
-    try {
+      if (socket == null || isDisrupted == true) {
+        Log.e("assign socket", "0");
+        connectionCnt++;
+        socket = new Socket(dstAddress, dstPort);
+        socket.setSoTimeout(5000);
+        isDisrupted = false;
+      }
+      //Log.e("isDisrupted: ", isDisrupted +"");
       //make message from offset 0
       makeMessage(offset, op, shift);
-      Log.e("messageBytes: ", messageBytes +"");
+      //Log.e("messageBytes: ", messageBytes +"");
 
       //write messageBytes to outputstream
       outputStream = socket.getOutputStream();
@@ -302,103 +301,83 @@ public class MainActivity extends AppCompatActivity {
 
 
       //read Header bytes.
-      int header_cnt = 0;
       while (true) {
-        int avail = 0;
-        avail = inputStream.available();
-        //Log.e("header avail", avail +"");
-        if (avail >= 8) {
-          bytesRead = inputStream.read(buffer, 0, 8);
-          if (bytesRead == -1) {
-            inputStream.close();
-            outputStream.close();
-            socket.close();
-            byteArrayOutputStream.close();
-            return offset;
-          }
-          byte[] lenBytes = new byte[4];
-          for (int i = 0; i < 4; i++) {
-            lenBytes[i] = buffer[i+4];
-          }
-          targetLen = ByteBuffer.wrap(lenBytes).getInt();
-          Log.e("received len", targetLen +"");
-          accReadLen += 8;
-          break;
-        } else {
-          if (header_cnt > 10) {
-            inputStream.close();
-            outputStream.close();
-            socket.close();
-            byteArrayOutputStream.close();
-            return offset;
-            //Log.e("wrote header again", "0");
-            //header_cnt = 0;
-          }
+        Log.e("header read start", "0");
+        bytesRead = inputStream.read(buffer, 0, 8);
+        Log.e("header read done", bytesRead+"");
+        if (bytesRead == -1) {
+          isDisrupted = true;
+          inputStream.close();
+          outputStream.close();
+          socket.close();
+          byteArrayOutputStream.close();
+          //Log.e("bytesRead", "negative");
+          return offset;
         }
-        header_cnt++;
+        byte[] lenBytes = new byte[4];
+        for (int i = 0; i < 4; i++) {
+          lenBytes[i] = buffer[i+4];
+        }
+        targetLen = ByteBuffer.wrap(lenBytes).getInt();
+        //Log.e("received len", targetLen +"");
+        accReadLen += 8;
+        break;
       }
 
       //read Contents.
-      int cnt = 0;
       while (true) {
-        //Log.e("looping: ", cnt+"");
-        int avail;
-        avail = inputStream.available();
-        if (avail > 0) {
-          Log.e("avaliable: ", avail + "");
-          bytesRead = inputStream.read(buffer);
-          if (bytesRead == -1) {
-            socket.close();
-            inputStream.close();
-            outputStream.close();
-            byteArrayOutputStream.close();
-            return offset + accReadLen - 8;
-          }
-
-          accReadLen += bytesRead;
-          Log.e("bytesRead: ", bytesRead + "");
-          byteArrayOutputStream.write(buffer, 0, bytesRead);
-          //Log.e("byteArrayOutputStream: ", byteArrayOutputStream.toString());
-          Log.e("acc len: ", accReadLen+"");
-          if (targetLen == accReadLen) {
-            response += byteArrayOutputStream.toString("UTF-8");
-            Log.e("acc response: ", response);
-            break;
-          }
-        } else {
-          if (cnt > 10) {
-            response += byteArrayOutputStream.toString("UTF-8");
-            socket.close();
-            inputStream.close();
-            outputStream.close();
-            byteArrayOutputStream.close();
-            return (offset + accReadLen - 8);
-          }
+        Log.e("data read start", "0");
+        bytesRead = inputStream.read(buffer);
+        Log.e("data read done", bytesRead+"");
+        if (bytesRead == -1) {
+          isDisrupted = true;
+          inputStream.close();
+          outputStream.close();
+          socket.close();
+          byteArrayOutputStream.close();
+          return offset + accReadLen - 8;
         }
 
-        cnt++;
+        accReadLen += bytesRead;
+        //Log.e("bytesRead: ", bytesRead + "");
+        byteArrayOutputStream.write(buffer, 0, bytesRead);
+        //Log.e("byteArrayOutputStream: ", byteArrayOutputStream.toString());
+        //Log.e("acc len: ", accReadLen+"");
+        String a = byteArrayOutputStream.toString("UTF-8");
+        if (a.length() != bytesRead) {
+          Log.e("streamWriteSize", a.length()+"");
+        }
+        response += byteArrayOutputStream.toString("UTF-8");
+        byteArrayOutputStream.reset();
+        if (targetLen == accReadLen) {
+          //Log.e("acc response: ", response);
+          Log.e("accReadLen = targetLen", accReadLen+"");
+          break;
+        }
       }
 
       Log.e("OutOfWhile", "1");
 
     } catch (UnknownHostException e) {
       // TODO Auto-generated catch block
+      isDisrupted = true;
       e.printStackTrace();
       Log.e("Exception", "UnknownHostException: " + e.toString());
       //return offset + accReadLen - 8;
+    } catch (SocketTimeoutException e) {
+      isDisrupted = true;
+      e.printStackTrace();
+      Log.e("Exception", "SocketTimeoutException");
     } catch (IOException e) {
       // TODO Auto-generated catch block
+      isDisrupted = true;
       e.printStackTrace();
       Log.e("Exception", "IOException: " + e.toString());
       //return offset + accReadLen - 8;
-    }finally{
+    } finally{
       if(socket != null){
         try {
-          inputStream.close();
-          outputStream.close();
           byteArrayOutputStream.close();
-          socket.close();
-
         } catch (IOException e) {
           // TODO Auto-generated catch block
           e.printStackTrace();
@@ -412,7 +391,7 @@ public class MainActivity extends AppCompatActivity {
     String dirname = Environment.getExternalStorageDirectory().getAbsolutePath();
     Log.e("dir", dirname);
     File dir = new File(dirname);
-    final File file = new File(dir, resultFileName);
+    final File file = new File(dir, outputText.getText().toString());
     if (!file.exists()) {
       try {
         file.createNewFile();
@@ -423,6 +402,8 @@ public class MainActivity extends AppCompatActivity {
     try {
       FileOutputStream currFileStream = new FileOutputStream(file);
       currFileStream.write(contentString.getBytes());
+      Log.e("openFileLength: ", targetBytes.length + "");
+      Log.e("createFileLength: ", contentString.length() + "");
       currFileStream.close();
     } catch (FileNotFoundException e) {
       e.printStackTrace();
@@ -431,7 +412,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     MediaScannerConnection.scanFile(getApplicationContext(), new String[]{Environment.getExternalStorageDirectory()
-        .getAbsolutePath()+"/" + resultFileName}, null, null);
+        .getAbsolutePath()+"/" + outputText.getText().toString()}, null, null);
 
     /* Referenced file reading from http://stackoverflow.com/questions/12421814/how-can-i-read-a-text-file-in-android */
     try {
@@ -443,7 +424,7 @@ public class MainActivity extends AppCompatActivity {
         text.append('\n');
       }
       br.close();
-      Log.e("resultFileResult: ", text.toString());
+      //Log.e("resultFileResult: ", text.toString());
     } catch (FileNotFoundException e) {
       e.printStackTrace();
     } catch (IOException e) {
@@ -514,7 +495,7 @@ public class MainActivity extends AppCompatActivity {
 
         InputStream fileInputStream = getContentResolver().openInputStream(fileUri);
         int size = fileInputStream.available();
-        Log.e("file size: ", size + "");
+        Log.e("File Size: ", size + "");
         targetBytes = new byte[size];
         fileInputStream.read(targetBytes, 0, targetBytes.length);
         fileInputStream.close();
