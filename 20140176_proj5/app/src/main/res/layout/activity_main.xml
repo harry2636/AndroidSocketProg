@@ -18,7 +18,10 @@
               android:layout_height="wrap_content"
               android:text="IP:"/>
     <EditText android:layout_width="match_parent"
-              android:layout_height="wrap_content"/>
+              android:layout_height="wrap_content"
+              android:id="@+id/address"
+              android:inputType="numberDecimal"
+              android:digits="0123456789."/>
   </LinearLayout>
 
   <LinearLayout android:layout_width="match_parent"
@@ -28,7 +31,9 @@
               android:layout_height="wrap_content"
               android:text="Port:"/>
     <EditText android:layout_width="match_parent"
-              android:layout_height="wrap_content"/>
+              android:layout_height="wrap_content"
+              android:id="@+id/port"
+              android:inputType="number"/>
   </LinearLayout>
 
   <LinearLayout android:layout_width="match_parent"
@@ -38,7 +43,9 @@
               android:layout_height="wrap_content"
               android:text="Shift:"/>
     <EditText android:layout_width="match_parent"
-              android:layout_height="wrap_content"/>
+              android:layout_height="wrap_content"
+              android:id="@+id/shift"
+              android:inputType="number"/>
   </LinearLayout>
   <LinearLayout android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -48,10 +55,12 @@
                 android:orientation="horizontal">
       <RadioButton android:layout_width="wrap_content"
                    android:layout_height="wrap_content"
-                   android:text="Encrypt"/>
+                   android:text="Encrypt"
+                   android:id="@+id/encrypt"/>
       <RadioButton android:layout_width="wrap_content"
                    android:layout_height="wrap_content"
-                   android:text="Decrypt"/>
+                   android:text="Decrypt"
+                   android:id="@+id/decrypt"/>
     </RadioGroup>
     <Button
         android:text="Choose File"
@@ -64,4 +73,11 @@
       android:layout_width="match_parent"
       android:layout_height="wrap_content"
       android:id="@+id/connect_button"/>
+  <ScrollView android:layout_width="match_parent"
+              android:layout_height="match_parent">
+    <TextView android:layout_width="wrap_content"
+              android:layout_height="wrap_content"
+              android:text="Response text"
+              android:id="@+id/response"/>
+  </ScrollView>
 </LinearLayout>
