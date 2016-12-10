@@ -19,12 +19,10 @@ import android.widget.RadioButton;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
-import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -49,11 +47,13 @@ public class MainActivity extends AppCompatActivity {
   ByteBuffer message;
   byte[] messageBytes = null;
   byte[] targetBytes = null;
-  String response = "";
   boolean isEncrypt = true;
   Socket socket = null;
   boolean isDisrupted = false;
   int connectionCnt = 0;
+  FileOutputStream fileOutputStream = null;
+  int fileLenCnt = 0;
+
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
@@ -198,7 +198,8 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onPreExecute() {
-      response = "";
+      createFile();
+      fileLenCnt = 0;
       connectionCnt = 0;
       progressDialog = new ProgressDialog(context);
       progressDialog.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
@@ -220,7 +221,7 @@ public class MainActivity extends AppCompatActivity {
       int invaildCnt = 0;
       while (offset != maxByteCnt) {
         offset = sendMessage(dstAddress, dstPort, offset, op, shift);
-        //Log.e("offset", offset+"");
+        Log.e("offset", offset+"");
         String opString = "";
         if (isEncrypt) {
           opString = "Encrypting now, ";
@@ -259,18 +260,17 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onPostExecute(Integer result) {
       connectionCnt = 0;
-      createFile(response);
       responseText.setText("Response from server is done");
       try {
         if (socket != null) {
           socket.close();
         }
+        closeFile();
         socket = null;
         isDisrupted = false;
       } catch (IOException e) {
         e.printStackTrace();
       }
-
 
       progressDialog.dismiss();
       if (result >= 0) {
@@ -371,10 +371,11 @@ public class MainActivity extends AppCompatActivity {
           Log.e("streamWriteSize: ", a.length()+" bytes Read: " + bytesRead);
         }
         */
-        response += byteArrayOutputStream.toString("UTF-8");
+        fileLenCnt += byteArrayOutputStream.size();
+        fileOutputStream.write(byteArrayOutputStream.toByteArray());
+        fileOutputStream.flush();
         byteArrayOutputStream.reset();
         if (targetLen == accReadLen) {
-          //Log.e("acc response: ", response);
           Log.e("accReadLen = targetLen", accReadLen+"");
           break;
         }
@@ -416,7 +417,7 @@ public class MainActivity extends AppCompatActivity {
     return offset + accReadLen - 8;
   }
 
-  public void createFile(String contentString) {
+  public void createFile() {
     String dirname = Environment.getExternalStorageDirectory().getAbsolutePath();
     Log.e("dir", dirname);
     File dir = new File(dirname);
@@ -428,6 +429,12 @@ public class MainActivity extends AppCompatActivity {
         e.printStackTrace();
       }
     }
+    try {
+      fileOutputStream = new FileOutputStream(file);
+    } catch (FileNotFoundException e) {
+      e.printStackTrace();
+    }
+    /*
     try {
       FileOutputStream currFileStream = new FileOutputStream(file);
       currFileStream.write(contentString.getBytes());
@@ -444,7 +451,9 @@ public class MainActivity extends AppCompatActivity {
     MediaScannerConnection.scanFile(getApplicationContext(), new String[]{Environment.getExternalStorageDirectory()
         .getAbsolutePath()+"/" + outputText.getText().toString()}, null, null);
 
+    */
     /* Referenced file reading from http://stackoverflow.com/questions/12421814/how-can-i-read-a-text-file-in-android */
+    /*
     try {
       BufferedReader br = new BufferedReader(new FileReader(file));
       String line;
@@ -460,53 +469,23 @@ public class MainActivity extends AppCompatActivity {
     } catch (IOException e) {
       e.printStackTrace();
     }
+    */
   }
 
-  /*
-  public void createSampleFile() {
-    String dirname = Environment.getExternalStorageDirectory().getAbsolutePath();
-    Log.e("dir", dirname);
-    File dir = new File(dirname);
-    final File file = new File(dir, "sample.txt");
-    if (!file.exists()) {
+  public void closeFile() {
+    if (fileOutputStream != null) {
       try {
-        file.createNewFile();
+        fileOutputStream.close();
       } catch (IOException e) {
         e.printStackTrace();
       }
     }
-    try {
-      FileOutputStream currFileStream = new FileOutputStream(file);
-      currFileStream.write("1234567890\n".getBytes());
-      currFileStream.flush();
-      currFileStream.close();
-    } catch (FileNotFoundException e) {
-      e.printStackTrace();
-    } catch (IOException e) {
-      e.printStackTrace();
-    }
-
     MediaScannerConnection.scanFile(getApplicationContext(), new String[]{Environment.getExternalStorageDirectory()
-        .getAbsolutePath()+"/sample.txt"}, null, null);
-
-    try {
-      BufferedReader br = new BufferedReader(new FileReader(file));
-      String line;
-      StringBuilder text = new StringBuilder();
-      while ((line = br.readLine()) != null) {
-        text.append(line);
-        text.append('\n');
-      }
-      br.close();
-      Log.e("readResult: ", text.toString());
-    } catch (FileNotFoundException e) {
-      e.printStackTrace();
-    } catch (IOException e) {
-      e.printStackTrace();
-    }
-
+        .getAbsolutePath()+"/" + outputText.getText().toString()}, null, null);
+    Log.e("FileLength1_open: ", targetBytes.length + "");
+    Log.e("FileLength2_create: ", fileLenCnt + "");
+    fileLenCnt = 0;
   }
-  */
 
   /* referenced http://stackoverflow.com/questions/10039672/android-how-to-read-file-in-bytes for file input reading */
   @Override
@@ -520,17 +499,10 @@ public class MainActivity extends AppCompatActivity {
       Uri fileUri = data.getData();
       Log.e("fileUri", fileUri.getPath());
 
-      //File file = new File(fileUri.getPath());
-      //int size = (int) file.length();
-
       try {
-
         InputStream fileInputStream = getContentResolver().openInputStream(fileUri);
-        int size = fileInputStream.available();
-        Log.e("File Size: ", size + "");
-        targetBytes = new byte[size];
-        fileInputStream.read(targetBytes, 0, targetBytes.length);
-        fileInputStream.close();
+        targetBytes = readFullyNoClose(fileInputStream);
+        Log.e("File Size: ", targetBytes.length + "");
       } catch (FileNotFoundException e) {
         // TODO Auto-generated catch block
         e.printStackTrace();
@@ -539,7 +511,17 @@ public class MainActivity extends AppCompatActivity {
         e.printStackTrace();
       }
     }
+  }
 
+  /* referenced from https://github.com/android/platform_development/blob/master/samples/ApiDemos/src/com/example/android/apis/content/DocumentsSample.java#L353 */
+  public static byte[] readFullyNoClose(InputStream in) throws IOException {
+    ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+    byte[] buffer = new byte[1024];
+    int count;
+    while ((count = in.read(buffer)) != -1) {
+      bytes.write(buffer, 0, count);
+    }
+    return bytes.toByteArray();
   }
 }
 
